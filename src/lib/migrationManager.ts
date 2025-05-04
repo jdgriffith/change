@@ -1,12 +1,10 @@
 import * as fs from "fs-extra";
 import * as path from "path";
 import * as chokidar from "chokidar";
-import { MigrationConfig } from "./config";
+import type { MigrationConfig } from "./config";
 import { parseSchema } from "./schemaParser";
 import { compareSchemas } from "./schemaComparer";
-import { generateMigration, Migration } from "./migrationGenerator";
-import { execSync } from "child_process";
-import crypto from "crypto";
+import { generateMigration, type Migration } from "./migrationGenerator";
 
 /**
  * Migration manager class that handles schema changes and generates migrations
