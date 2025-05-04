@@ -10,6 +10,7 @@ A lightweight database migration library that automatically creates migrations f
 - ⏱️ Smart naming based on the changes detected
 - 🔙 Includes both up and down migrations
 - 🛠️ Simple CLI commands
+- 💾 Tracks schema changes between CLI invocations
 
 ## Installation
 
@@ -32,13 +33,23 @@ bun add db-migrations
 bun run db:migration:init
 ```
 
-2. Start watching your Prisma schema for changes:
+2. You can either watch for changes continuously:
 
 ```bash
 bun run db:migration:watch
 ```
 
-3. Edit your Prisma schema file and save it. Migrations will be automatically generated!
+Or check for changes whenever you run the CLI:
+
+```bash
+bun run db:migration:check
+```
+
+3. When changes are detected, generate migrations:
+
+```bash
+bun run db:migration:generate my_migration_name
+```
 
 ## Configuration
 
@@ -56,7 +67,10 @@ Create a `migration-config.json` file in your project root:
 ## CLI Commands
 
 - `bun run db:migration:init` - Initialize the migration system
-- `bun run db:migration:watch` - Watch the schema file for changes
+- `bun run db:migration:watch` - Watch the schema file for changes continuously
+- `bun run db:migration:check` - Check for schema changes since last run
+- `bun run db:migration:check --generate` - Check for changes and generate migrations if detected
+- `bun run db:migration:generate [name]` - Generate migration from current schema changes
 - `bun run db:migration:create [name]` - Create a new migration (interactive)
 - `bun run db:migration:apply [name]` - Apply pending migration
 - `bun run db:migration:list` - List all migrations
@@ -75,7 +89,16 @@ const manager = new MigrationManager({
 // Initialize the manager
 await manager.initialize();
 
-// Start watching for changes
+// Check for changes since last run
+const hasChanges = await manager.checkForChanges();
+
+if (hasChanges) {
+  // Generate a migration
+  const migration = await manager.handleSchemaChangeFromCli("my_migration");
+  console.log(`Created migration: ${migration.id}`);
+}
+
+// Or you can watch for changes continuously
 await manager.watch();
 
 // Later, when you want to stop watching
@@ -85,9 +108,10 @@ await manager.stop();
 ## How It Works
 
 1. The library parses your Prisma schema into a structured representation
-2. When changes are detected, it compares the new schema with the previous version
+2. When changes are detected (either through watching or checking), it compares the new schema with the previous version
 3. SQL migrations are automatically generated based on the differences
 4. Migrations are stored in your specified directory with appropriate up/down commands
+5. A cached version of the schema is saved between runs to detect changes when running CLI commands
 
 ## Migration File Structure
 

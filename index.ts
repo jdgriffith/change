@@ -68,6 +68,59 @@ async function main() {
       });
       break;
 
+    case "check":
+      // Check for changes since last run
+      await manager.initialize();
+      const hasChanges = await manager.checkForChanges();
+
+      if (hasChanges) {
+        console.log("Schema changes detected since last run");
+
+        if (args[1] === "--generate" || args[1] === "-g") {
+          // Generate migration automatically
+          const name = args[2] || undefined;
+          const migration = await manager.handleSchemaChangeFromCli(name);
+
+          if (migration) {
+            console.log(`Migration created: ${migration.id}`);
+            console.log(
+              `Files located at: ${path.join(
+                config.migrationsDir,
+                migration.id
+              )}`
+            );
+          }
+        } else {
+          console.log("Run with --generate or -g flag to create a migration");
+        }
+      } else {
+        console.log("No schema changes detected since last run");
+      }
+      break;
+
+    case "generate":
+      // Generate migration from current schema changes
+      await manager.initialize();
+      const migrationName = args[1] || undefined;
+      const generatedMigration = await manager.handleSchemaChangeFromCli(
+        migrationName
+      );
+
+      if (generatedMigration) {
+        console.log(`Migration created: ${generatedMigration.id}`);
+        console.log(
+          `Files located at: ${path.join(
+            config.migrationsDir,
+            generatedMigration.id
+          )}`
+        );
+      } else {
+        console.log(
+          "No migration was created. There may be no schema changes."
+        );
+      }
+      break;
+
     case "create":
       // Create a new migration manually
       const migrationName = args[1] || "migration";
@@ -162,6 +215,8 @@ DB Migration CLI
 
 Commands:
   init                Initialize the migration system
+  check [--generate]  Check for schema changes since last run (use with -g to generate migration)
+  generate [name]     Generate migration from current schema changes
   watch               Watch the schema file for changes
   create [name]       Create a new migration (interactive)
   apply [name]        Apply pending migration

@@ -6,15 +6,17 @@ import { parseSchema } from "./schemaParser";
 import { compareSchemas } from "./schemaComparer";
 import { generateMigration, Migration } from "./migrationGenerator";
 import { execSync } from "child_process";
+import crypto from "crypto";
 
 /**
- * Migration manager class that watches schema changes and generates migrations
+ * Migration manager class that handles schema changes and generates migrations
  */
 export class MigrationManager {
   private config: MigrationConfig;
   private watcher: chokidar.FSWatcher | null = null;
   private previousSchema: any = null;
   private isInitialized = false;
+  private schemaCachePath: string;
 
   /**
    * Create a new migration manager
@@ -26,6 +28,11 @@ export class MigrationManager {
       migrationsDir: path.resolve(config.migrationsDir),
       schemaPath: path.resolve(config.schemaPath),
     };
+    // Store schema cache in .schema-cache.json in the migrations directory
+    this.schemaCachePath = path.join(
+      this.config.migrationsDir,
+      ".schema-cache.json"
+    );
   }
 
   /**
@@ -35,14 +42,76 @@ export class MigrationManager {
     // Ensure migrations directory exists
     await fs.ensureDir(this.config.migrationsDir);
 
-    // Parse the current schema as baseline
+    // Try to load cached schema first
+    await this.loadCachedSchema();
+
+    // If no cached schema is found, parse the current schema as baseline
+    if (!this.previousSchema) {
+      try {
+        this.previousSchema = await parseSchema(this.config.schemaPath);
+        await this.saveSchemaCache();
+      } catch (error) {
+        console.error("Failed to parse schema:", error);
+        throw error;
+      }
+    }
+
+    this.isInitialized = true;
+    console.log("Migration manager initialized");
+  }
+
+  /**
+   * Load the cached schema if it exists
+   */
+  private async loadCachedSchema(): Promise<boolean> {
     try {
-      this.previousSchema = await parseSchema(this.config.schemaPath);
-      this.isInitialized = true;
-      console.log("Migration manager initialized");
+      if (await fs.pathExists(this.schemaCachePath)) {
+        const cacheData = await fs.readJson(this.schemaCachePath);
+        this.previousSchema = cacheData.schema;
+        console.log("Loaded schema cache from", this.schemaCachePath);
+        return true;
+      }
     } catch (error) {
-      console.error("Failed to initialize migration manager:", error);
-      throw error;
+      console.warn("Failed to load schema cache:", error);
+    }
+    return false;
+  }
+
+  /**
+   * Save the current schema to cache
+   */
+  private async saveSchemaCache(): Promise<void> {
+    try {
+      if (this.previousSchema) {
+        await fs.writeJson(
+          this.schemaCachePath,
+          {
+            timestamp: new Date().toISOString(),
+            schema: this.previousSchema,
+          },
+          { spaces: 2 }
+        );
+      }
+    } catch (error) {
+      console.warn("Failed to save schema cache:", error);
+    }
+  }
+
+  /**
+   * Check if the schema has changed since the last run
+   */
+  async checkForChanges(): Promise<boolean> {
+    if (!this.isInitialized) {
+      await this.initialize();
+    }
+
+    try {
+      const currentSchema = await parseSchema(this.config.schemaPath);
+      const changes = compareSchemas(this.previousSchema, currentSchema);
+      return changes.length > 0;
+    } catch (error) {
+      console.error("Error checking for schema changes:", error);
+      return false;
     }
   }
 
@@ -90,7 +159,61 @@ export class MigrationManager {
   }
 
   /**
-   * Handle a schema file change
+   * Handle schema changes detected by CLI command
+   */
+  async handleSchemaChangeFromCli(
+    migrationName?: string
+  ): Promise<Migration | null> {
+    if (!this.isInitialized) {
+      await this.initialize();
+    }
+
+    try {
+      // Parse the new schema
+      const newSchema = await parseSchema(this.config.schemaPath);
+
+      // Compare with previous schema
+      const changes = compareSchemas(this.previousSchema, newSchema);
+
+      if (changes.length === 0) {
+        console.log("No schema changes detected");
+        return null;
+      }
+
+      console.log(`Detected ${changes.length} changes in schema`);
+
+      // Generate migration with optional custom name
+      const name = migrationName || this.createMigrationName(changes);
+      const migration = await generateMigration(
+        changes,
+        this.config.migrationsDir,
+        name
+      );
+
+      if (migration) {
+        console.log(`Created migration: ${migration.id}`);
+
+        // Apply migration if configured to do so
+        if (this.config.autoApply) {
+          await this.applyMigration(migration);
+        }
+
+        // Update cache with new schema
+        this.previousSchema = newSchema;
+        await this.saveSchemaCache();
+
+        return migration;
+      }
+
+      return null;
+    } catch (error) {
+      console.error("Error handling schema change:", error);
+      return null;
+    }
+  }
+
+  /**
+   * Handle a schema file change (for watch mode)
    */
   private async handleSchemaChange(): Promise<void> {
     try {
@@ -122,8 +245,9 @@ export class MigrationManager {
         console.log("No schema changes detected");
       }
 
-      // Update previous schema reference
+      // Update previous schema reference and cache
       this.previousSchema = newSchema;
+      await this.saveSchemaCache();
     } catch (error) {
       console.error("Error handling schema change:", error);
     }
