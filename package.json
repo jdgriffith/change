@@ -1,0 +1,31 @@
+{
+  "name": "db-migrations",
+  "module": "index.ts",
+  "type": "module",
+  "version": "1.0.0",
+  "description": "A database migration library that watches Prisma schema changes and generates migrations",
+  "scripts": {
+    "start": "bun run index.ts",
+    "db:migration:init": "bun run index.ts init",
+    "db:migration:watch": "bun run index.ts watch",
+    "db:migration:create": "bun run index.ts create",
+    "db:migration:apply": "bun run index.ts apply",
+    "db:migration:list": "bun run index.ts list",
+    "test": "bun test"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/fs-extra": "^11.0.4",
+    "@types/node": "^20.11.30"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.7.0",
+    "chokidar": "^4.0.3",
+    "diff": "^7.0.0",
+    "fs-extra": "^11.3.0",
+    "prisma": "^6.7.0"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  }
+}
